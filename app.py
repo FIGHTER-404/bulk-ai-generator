@@ -38,36 +38,41 @@ if st.button("🚀 Generate All Images", type="primary"):
         for i, prompt in enumerate(prompts):
             status_text.text(f"Generating image {i+1} of {len(prompts)}...")
             
-            try:
-                # URL encode the prompt for Pollinations AI API
-                encoded_prompt = urllib.parse.quote(prompt)
-                # 16:9 cinematic aspect ratio configuration
-                image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1280&height=720&nologo=true"
-                
-                # Fetch image from API
-                response = requests.get(image_url, timeout=60)
-                
-                if response.status_code == 200:
-                    image_path = os.path.join(output_dir, f"image_{i+1}.jpg")
-                    with open(image_path, "wb") as f:
-                        f.write(response.content)
-                    successful_images.append(image_path)
-                else:
-                    st.warning(f"Prompt {i+1} generate karne mein masla hua (Status: {response.status_code})")
-                
-            except Exception as e:
-                st.error(f"Error on prompt {i+1}: {e}")
+            # 3 second gap between requests to prevent 402 errors
+            if i > 0:
+                time.sleep(3)
+            
+            success = False
+            for attempt in range(3): # Retry up to 3 times if server busy
+                try:
+                    encoded_prompt = urllib.parse.quote(prompt)
+                    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1280&height=720&nologo=true"
+                    
+                    response = requests.get(image_url, timeout=60)
+                    
+                    if response.status_code == 200:
+                        image_path = os.path.join(output_dir, f"image_{i+1}.jpg")
+                        with open(image_path, "wb") as f:
+                            f.write(response.content)
+                        successful_images.append(image_path)
+                        success = True
+                        break
+                    else:
+                        time.sleep(2) # Wait before retry
+                except Exception as e:
+                    time.sleep(2)
+            
+            if not success:
+                st.warning(f"Prompt {i+1} generate nahi ho saka (Server busy).")
                 
             progress_bar.progress((i + 1) / len(prompts))
-            time.sleep(0.5) # Chota sa pause taaki server par load na pade
             
-        status_text.text("✅ Saari images successfully generate ho chuki hain!")
+        status_text.text("✅ Process complete ho gaya hai!")
         
         # --- Step 3: Bulk Download (ZIP) ---
         if successful_images:
             st.success(f"Total {len(successful_images)} images ban gayi hain!")
             
-            # Create Zip in memory
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w") as zip_file:
                 for img_path in successful_images:
@@ -82,4 +87,3 @@ if st.button("🚀 Generate All Images", type="primary"):
                 mime="application/zip",
                 type="primary"
             )
-            
